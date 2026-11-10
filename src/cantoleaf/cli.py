@@ -80,6 +80,62 @@ def doctor() -> None:
     console.print("")
 
 
+@app.command()
+def estimate(
+    file_path: str = typer.Argument(..., help="Path to eBook (.epub), PDF, or Markdown file"),
+) -> None:
+    """Inspect a document's chapters, block classification, and estimated duration per Depth Gear."""
+    from cantoleaf.ingest.registry import load_document
+
+    try:
+        book = load_document(file_path)
+    except Exception as e:
+        console.print(f"[bold red]Error loading document:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
+
+    console.print(f"\n[bold green]{book.title}[/bold green] by [cyan]{book.author}[/cyan]")
+    console.print(
+        f"Total Chapters: [bold]{len(book.chapters)}[/bold] | Language: [dim]{book.language}[/dim]\n"
+    )
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Chapter", style="dim", width=8)
+    table.add_column("Title", width=30)
+    table.add_column("Blocks", justify="right", width=8)
+    table.add_column("Characters", justify="right", width=12)
+    table.add_column("Pulse (~10%)", justify="right", width=14)
+    table.add_column("Crux (~55%)", justify="right", width=14)
+    table.add_column("Verbatim (100%)", justify="right", width=16)
+
+    # Assumed speaking rate: ~15 characters per second (900 chars/min)
+    total_chars = 0
+    for ch in book.chapters:
+        total_chars += ch.estimated_chars
+        v_min = ch.estimated_chars / 900.0
+        c_min = v_min * 0.55
+        p_min = v_min * 0.10
+
+        table.add_row(
+            f"#{ch.index + 1}",
+            ch.title[:28] + ("..." if len(ch.title) > 28 else ""),
+            str(len(ch.blocks)),
+            f"{ch.estimated_chars:,}",
+            f"{p_min:.1f} min",
+            f"{c_min:.1f} min",
+            f"{v_min:.1f} min",
+        )
+
+    console.print(table)
+
+    total_v_min = total_chars / 900.0
+    console.print(f"\n[bold]Total Book Characters:[/bold] {total_chars:,}")
+    console.print(f"• [bold]Gear 1 (Pulse):[/bold] ~{total_v_min * 0.10:.1f} minutes")
+    console.print(f"• [bold]Gear 2 (Crux):[/bold] ~{total_v_min * 0.55:.1f} minutes")
+    console.print(
+        f"• [bold]Gear 3 (Verbatim):[/bold] ~{total_v_min:.1f} minutes ({total_v_min / 60:.1f} hours)\n"
+    )
+
+
 def main() -> None:
     app()
 
