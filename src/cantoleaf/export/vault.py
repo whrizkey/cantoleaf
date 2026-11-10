@@ -32,7 +32,7 @@ def export_obsidian_marginalia(
     ]
 
     for u in utterances:
-        lines.append(f"> \"{u.source_text}\"")
+        lines.append(f'> "{u.source_text}"')
         lines.append(f"— *{chapter_title} (Block #{u.block_index})*")
         lines.append("")
 

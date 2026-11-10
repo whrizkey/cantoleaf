@@ -13,7 +13,9 @@ from cantoleaf.workflows.retention import generate_recall_lock_utterances
 @pytest.mark.asyncio
 async def test_socratic_recall_locks() -> None:
     adapt = ExtractiveAdaptProvider()
-    utterances = await generate_recall_lock_utterances("book1", 0, "Chapter 1", "The linear constraint of books.", adapt)
+    utterances = await generate_recall_lock_utterances(
+        "book1", 0, "Chapter 1", "The linear constraint of books.", adapt
+    )
     assert len(utterances) >= 3
     assert utterances[0].spoken_text.startswith("Active Recall")
     # Thinking pause is 4000ms
@@ -37,7 +39,9 @@ def test_obsidian_and_anki_export(tmp_path: Path) -> None:
     assert "Attention is the bottleneck" in content
     assert "Author X" in content
 
-    anki_file = export_anki_deck("Cognitive Habits", [("What is the bottleneck?", "Attention.")], tmp_path)
+    anki_file = export_anki_deck(
+        "Cognitive Habits", [("What is the bottleneck?", "Attention.")], tmp_path
+    )
     assert anki_file.exists()
     csv_content = anki_file.read_text(encoding="utf-8")
     assert "What is the bottleneck?,Attention." in csv_content
@@ -60,7 +64,9 @@ def test_lyrics_and_m4b_mastering(tmp_path: Path) -> None:
             audio_path=f1,
             duration_sec=1.0,
             pause_after_sec=0.2,
-            word_timings=(WordTiming(word="Hello", char_start=0, char_end=5, start_sec=0.0, end_sec=0.8),),
+            word_timings=(
+                WordTiming(word="Hello", char_start=0, char_end=5, start_sec=0.0, end_sec=0.8),
+            ),
             provider="fake",
             voice="v1",
         ),
@@ -69,7 +75,9 @@ def test_lyrics_and_m4b_mastering(tmp_path: Path) -> None:
             audio_path=f2,
             duration_sec=1.0,
             pause_after_sec=0.2,
-            word_timings=(WordTiming(word="World", char_start=0, char_end=5, start_sec=0.0, end_sec=0.8),),
+            word_timings=(
+                WordTiming(word="World", char_start=0, char_end=5, start_sec=0.0, end_sec=0.8),
+            ),
             provider="fake",
             voice="v1",
         ),

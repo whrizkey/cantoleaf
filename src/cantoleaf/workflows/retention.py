@@ -24,45 +24,51 @@ async def generate_recall_lock_utterances(
     u_idx = 0
 
     # Intro prompt
-    utterances.append(Utterance(
-        utterance_id=f"{book_id}:ch{chapter_index}:recall:intro",
-        chapter_index=chapter_index,
-        block_index=9999,
-        gear=DepthGear.PULSE,
-        lang_mode=LangMode.SOURCE,
-        block_kind=BlockKind.RECALL_LOCK,
-        source_text="Active Recall Checkpoint.",
-        spoken_text="Active Recall Checkpoint. Test your memory on the chapter's core ideas.",
-        voice_role="socratic_host",
-        pause_after_ms=800,
-    ))
+    utterances.append(
+        Utterance(
+            utterance_id=f"{book_id}:ch{chapter_index}:recall:intro",
+            chapter_index=chapter_index,
+            block_index=9999,
+            gear=DepthGear.PULSE,
+            lang_mode=LangMode.SOURCE,
+            block_kind=BlockKind.RECALL_LOCK,
+            source_text="Active Recall Checkpoint.",
+            spoken_text="Active Recall Checkpoint. Test your memory on the chapter's core ideas.",
+            voice_role="socratic_host",
+            pause_after_ms=800,
+        )
+    )
 
     for u_idx, (q, a) in enumerate(qa_pairs):
         # Question
-        utterances.append(Utterance(
-            utterance_id=f"{book_id}:ch{chapter_index}:recall:q:{u_idx}",
-            chapter_index=chapter_index,
-            block_index=9999,
-            gear=DepthGear.PULSE,
-            lang_mode=LangMode.SOURCE,
-            block_kind=BlockKind.RECALL_LOCK,
-            source_text=q,
-            spoken_text=f"Question: {q}",
-            voice_role="socratic_host",
-            pause_after_ms=4000,  # 4-second thinking pause!
-        ))
+        utterances.append(
+            Utterance(
+                utterance_id=f"{book_id}:ch{chapter_index}:recall:q:{u_idx}",
+                chapter_index=chapter_index,
+                block_index=9999,
+                gear=DepthGear.PULSE,
+                lang_mode=LangMode.SOURCE,
+                block_kind=BlockKind.RECALL_LOCK,
+                source_text=q,
+                spoken_text=f"Question: {q}",
+                voice_role="socratic_host",
+                pause_after_ms=4000,  # 4-second thinking pause!
+            )
+        )
         # Answer
-        utterances.append(Utterance(
-            utterance_id=f"{book_id}:ch{chapter_index}:recall:a:{u_idx}",
-            chapter_index=chapter_index,
-            block_index=9999,
-            gear=DepthGear.PULSE,
-            lang_mode=LangMode.SOURCE,
-            block_kind=BlockKind.RECALL_LOCK,
-            source_text=a,
-            spoken_text=f"Key takeaway: {a}",
-            voice_role="socratic_host",
-            pause_after_ms=1200,
-        ))
+        utterances.append(
+            Utterance(
+                utterance_id=f"{book_id}:ch{chapter_index}:recall:a:{u_idx}",
+                chapter_index=chapter_index,
+                block_index=9999,
+                gear=DepthGear.PULSE,
+                lang_mode=LangMode.SOURCE,
+                block_kind=BlockKind.RECALL_LOCK,
+                source_text=a,
+                spoken_text=f"Key takeaway: {a}",
+                voice_role="socratic_host",
+                pause_after_ms=1200,
+            )
+        )
 
     return utterances

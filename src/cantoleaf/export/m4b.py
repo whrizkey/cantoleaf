@@ -37,23 +37,36 @@ def master_m4b_audiobook(
     ]
 
     for title, start_s, end_s in chapter_markers:
-        meta_lines.extend([
-            "[CHAPTER]",
-            "TIMEBASE=1/1000",
-            f"START={int(start_s * 1000)}",
-            f"END={int(end_s * 1000)}",
-            f"title={title}",
-        ])
+        meta_lines.extend(
+            [
+                "[CHAPTER]",
+                "TIMEBASE=1/1000",
+                f"START={int(start_s * 1000)}",
+                f"END={int(end_s * 1000)}",
+                f"title={title}",
+            ]
+        )
 
     meta_file.write_text("\n".join(meta_lines), encoding="utf-8")
 
     # Run ffmpeg to encode to AAC / .m4b
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0", "-i", str(concat_list),
-        "-i", str(meta_file),
-        "-map_metadata", "1",
-        "-c:a", "aac", "-b:a", "64k",
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_list),
+        "-i",
+        str(meta_file),
+        "-map_metadata",
+        "1",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "64k",
         "-vn",
         str(out_file),
     ]
