@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CantoLeaf — Cognitive Audio Reader Studio</title>
+    <style>
+        :root {
+            --bg-color: #0f141c;
+            --surface-color: #1a2230;
+            --surface-hover: #232e42;
+            --primary: #4ade80;
+            --primary-glow: rgba(74, 222, 128, 0.25);
+            --text-main: #f1f5f9;
+            --text-dim: #94a3b8;
+            --highlight: #fef08a;
+            --highlight-bg: rgba(254, 240, 138, 0.25);
+            --border: #334155;
+            --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-stack);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 16px 24px;
+            background-color: var(--surface-color);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .studio-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar: Table of Contents */
+        .sidebar {
+            width: 280px;
+            background-color: var(--surface-color);
+            border-right: 1px solid var(--border);
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .toc-item {
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-dim);
+            transition: all 0.2s;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+
+        .toc-item:hover, .toc-item.active {
+            background-color: var(--surface-hover);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        /* Main Reader Canvas */
+        .reader-canvas {
+            flex: 1;
+            padding: 36px 64px;
+            overflow-y: auto;
+            max-width: 840px;
+            margin: 0 auto;
+            line-height: 1.85;
+            font-size: 1.15rem;
+        }
+
+        .gear-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background-color: rgba(74, 222, 128, 0.15);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        .word-token {
+            padding: 2px 3px;
+            border-radius: 4px;
+            transition: background-color 0.15s, color 0.15s;
+        }
+
+        .word-token.active {
+            background-color: var(--highlight-bg);
+            color: var(--highlight);
+            font-weight: 600;
+            box-shadow: 0 0 8px var(--primary-glow);
+        }
+
+        /* Bottom Controls Bar */
+        footer {
+            padding: 16px 32px;
+            background-color: var(--surface-color);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+        }
+
+        .gearshift-slider-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.9rem;
+        }
+
+        .gear-labels {
+            display: flex;
+            gap: 16px;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+
+        .gear-label.active {
+            color: var(--primary);
+        }
+
+        button {
+            background-color: var(--primary);
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            🌿 CantoLeaf Studio
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <select id="langMode" style="background: var(--surface-hover); color: #fff; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px;">
+                <option value="source">Mode: Source (Verbatim)</option>
+                <option value="echo">Mode: Echo (Dual-Language Shadow)</option>
+                <option value="code_switch">Mode: Code-Switch (Diglot)</option>
+            </select>
+            <button class="btn-outline" onclick="crystallizeSelection()">💎 Crystallize Note</button>
+            <button onclick="downloadM4B()">📥 Export .M4B</button>
+        </div>
+    </header>
+
+    <div class="studio-container">
+        <aside class="sidebar">
+            <h3 style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px;">Chapters</h3>
+            <div id="tocList">
+                <div class="toc-item active">Chapter 1: The Linear Constraint</div>
+                <div class="toc-item">Chapter 2: The Multi-Rail Alternative</div>
+                <div class="toc-item">Chapter 3: Cognitive Gearshifting</div>
+            </div>
+        </aside>
+
+        <main class="reader-canvas" id="readerCanvas">
+            <div class="gear-pill" id="currentGearPill">Gear 3: Verbatim (100% Unabridged)</div>
+            <h1 id="chapterTitle">Chapter 1: The Linear Constraint</h1>
+            <div id="proseContainer">
+                <p id="p1">
+                    <span class="word-token active">For</span>
+                    <span class="word-token">centuries,</span>
+                    <span class="word-token">human</span>
+                    <span class="word-token">communication</span>
+                    <span class="word-token">was</span>
+                    <span class="word-token">bounded</span>
+                    <span class="word-token">by</span>
+                    <span class="word-token">the</span>
+                    <span class="word-token">linear</span>
+                    <span class="word-token">rail</span>
+                    <span class="word-token">of</span>
+                    <span class="word-token">the</span>
+                    <span class="word-token">spoken</span>
+                    <span class="word-token">word.</span>
+                </p>
+                <p id="p2" style="color: var(--text-dim);">
+                    When books arrived, they preserved that linear lockstep. You begin at page one, sentence one, and march through paragraphs in strict temporal order.
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <footer>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+            <span id="timecode" style="color: var(--text-dim); font-size: 0.9rem;">00:04 / 01:12</span>
+        </div>
+
+        <div class="gearshift-slider-box">
+            <span>Density Depth:</span>
+            <input type="range" id="depthSlider" min="1" max="3" value="3" oninput="onGearshift(this.value)">
+            <div class="gear-labels">
+                <span class="gear-label" id="lblPulse">Pulse (10%)</span>
+                <span class="gear-label" id="lblCrux">Crux (55%)</span>
+                <span class="gear-label active" id="lblVerbatim">Verbatim (100%)</span>
+            </div>
+        </div>
+
+        <div style="color: var(--text-dim); font-size: 0.85rem;">
+            Audio Engine: <span style="color: var(--primary);">Edge TTS (ChristopherNeural)</span>
+        </div>
+    </footer>
+
+    <script>
+        let isPlaying = false;
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('playBtn').innerText = isPlaying ? "⏸ Pause" : "▶ Play";
+        }
+
+        function onGearshift(val) {
+            const pill = document.getElementById('currentGearPill');
+            const lblP = document.getElementById('lblPulse');
+            const lblC = document.getElementById('lblCrux');
+            const lblV = document.getElementById('lblVerbatim');
+
+            [lblP, lblC, lblV].forEach(el => el.classList.remove('active'));
+
+            if (val == 1) {
+                pill.innerText = "Gear 1: Pulse (3-Minute Thesis Rail)";
+                lblP.classList.add('active');
+            } else if (val == 2) {
+                pill.innerText = "Gear 2: Crux (High-Signal / Anecdotes Bridged)";
+                lblC.classList.add('active');
+            } else {
+                pill.innerText = "Gear 3: Verbatim (100% Unabridged)";
+                lblV.classList.add('active');
+            }
+        }
+
+        function crystallizeSelection() {
+            alert("💎 Paragraph crystallized to Obsidian Vault (./notes) and Anki Deck!");
+        }
+
+        function downloadM4B() {
+            alert("📥 Mastering Chaptered .M4B with embedded TOC and .LRC sync files...");
+        }
+    </script>
+</body>
+</html>
