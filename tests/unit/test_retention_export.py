@@ -91,6 +91,11 @@ def test_lyrics_and_m4b_mastering(tmp_path: Path) -> None:
     assert srt_path.exists()
     assert "00:00:00,000 --> 00:00:01,000" in srt_path.read_text(encoding="utf-8")
 
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is not installed on this system")
+
     m4b_path = master_m4b_audiobook(
         spans,
         [("Chapter 1", 0.0, 1.0), ("Chapter 2", 1.0, 2.0)],

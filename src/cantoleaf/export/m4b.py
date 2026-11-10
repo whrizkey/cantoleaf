@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -32,6 +33,9 @@ def master_m4b_audiobook(
     Socratic recall ticks for 4s pauses) so subtitle timestamps and audio playback stay synchronized.
     """
     out_file.parent.mkdir(parents=True, exist_ok=True)
+    if shutil.which("ffmpeg") is None:
+        raise SynthesisError("ffmpeg is not installed or not in PATH. Please install ffmpeg.")
+
     temp_dir = out_file.parent / ".tmp_master"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
