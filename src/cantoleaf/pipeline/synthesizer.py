@@ -33,12 +33,19 @@ class SynthesisPipeline:
         utterance: Utterance,
         *,
         voice: str | None = None,
+        secondary_voice: str | None = None,
         rate: float = 1.0,
         enable_earcons: bool = True,
     ) -> SynthesizedSpan:
-        chosen_voice = voice or getattr(utterance, "target_voice", None) or "default"
+        provider_default = getattr(self.tts, "default_voice", "default")
+        if utterance.voice_role == "secondary_echo":
+            chosen_voice = (
+                secondary_voice or getattr(utterance, "target_voice", None) or provider_default
+            )
+        else:
+            chosen_voice = voice or getattr(utterance, "target_voice", None) or provider_default
 
-        # Check cache first (includes block_kind and enable_earcons)
+        # Check cache first with the exact concrete voice
         cached = self.cache.get(
             utterance.spoken_text,
             self.tts.name,
@@ -54,8 +61,8 @@ class SynthesisPipeline:
         if self.tracker:
             self.tracker.record_tts_usage(self.tts.name, len(utterance.spoken_text))
 
-        # Synthesize fresh clip
-        span = await self.tts.synthesize(utterance, voice=voice, rate=rate)
+        # Synthesize fresh clip with explicit concrete voice
+        span = await self.tts.synthesize(utterance, voice=chosen_voice, rate=rate)
 
         # Prepend procedural earcon if applicable
         if enable_earcons and utterance.block_kind in (

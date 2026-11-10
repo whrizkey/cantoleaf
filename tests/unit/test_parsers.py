@@ -57,3 +57,35 @@ def test_pdf_header_footer_stripping(tmp_path: Path) -> None:
     # Repeating header and footer should be stripped
     assert "CANTOLEAF RESEARCH REPORT" not in all_text
     assert "core content of page" in all_text
+
+
+def test_epub_substring_chapter_names_not_dropped(tmp_path: Path) -> None:
+    """Chapters containing 'cover', 'nav', or 'toc' as substrings (e.g. discovery, stock) are preserved."""
+    from ebooklib import epub
+
+    from cantoleaf.ingest.epub import parse_epub
+
+    book = epub.EpubBook()
+    book.set_identifier("epub_test_disc")
+    book.set_title("Exploration and Discovery")
+    book.set_language("en")
+
+    # discovery.xhtml has substring 'cover', recovery.xhtml has 'cover', stock.xhtml has 'toc'
+    ch1 = epub.EpubHtml(title="Discovery", file_name="discovery.xhtml", lang="en")
+    ch1.set_content("<h1>Chapter 1: Discovery</h1><p>We embarked upon the vast uncharted seas.</p>")
+    ch2 = epub.EpubHtml(title="Stock Analysis", file_name="stock.xhtml", lang="en")
+    ch2.set_content("<h2>Chapter 2: Stock</h2><p>Capital asset allocation strategies.</p>")
+
+    book.add_item(ch1)
+    book.add_item(ch2)
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", ch1, ch2]
+
+    epub_path = tmp_path / "test_discovery.epub"
+    epub.write_epub(str(epub_path), book)
+
+    parsed = parse_epub(epub_path)
+    assert len(parsed.chapters) == 2
+    assert "Discovery" in parsed.chapters[0].title
+    assert "Stock" in parsed.chapters[1].title

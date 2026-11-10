@@ -16,6 +16,7 @@ class ElevenLabsTtsProvider(TtsProvider):
 
     name: str = "elevenlabs"
     sample_rate: int = 24000
+    default_voice: str = "21m00Tcm4TlvDq8ikWAM"
 
     def __init__(
         self, api_key: str, model_id: str = "eleven_multilingual_v2", cache_dir: Path | None = None
@@ -64,7 +65,7 @@ class ElevenLabsTtsProvider(TtsProvider):
                 "ElevenLabs API key is missing. Set ELEVENLABS_API_KEY in .env or keyring."
             )
 
-        voice_id = voice or "21m00Tcm4TlvDq8ikWAM"  # Rachel default
+        voice_id = voice or self.default_voice
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
         headers = {
             "xi-api-key": self.api_key,
@@ -97,7 +98,11 @@ class ElevenLabsTtsProvider(TtsProvider):
         except httpx.HTTPError as e:
             raise ProviderError(f"ElevenLabs network error: {e}", retryable=True) from e
 
-        out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.mp3"
+        import hashlib
+
+        safe_id = utterance.utterance_id.replace(":", "_")
+        h = hashlib.sha256(f"{voice_id}:{rate:.2f}".encode()).hexdigest()[:10]
+        out_path = self.cache_dir / f"{safe_id}_{h}.mp3"
         out_path.write_bytes(audio_bytes)
 
         # Parse character alignments into WordTimings

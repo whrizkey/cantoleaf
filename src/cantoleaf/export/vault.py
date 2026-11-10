@@ -7,7 +7,7 @@ from cantoleaf.models import Utterance
 
 
 def _sanitize_slug(text: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9_\-]+", "_", text.strip()).strip("_")
+    cleaned = re.sub(r"[^\w\-]+", "_", text.strip(), flags=re.UNICODE).strip("_")
     return cleaned or "untitled"
 
 
@@ -22,6 +22,7 @@ def export_obsidian_marginalia(
     Exports crystallized spoken passages to an Obsidian-compatible Markdown note
     complete with book metadata, chapter citations, and pull-quotes.
     Appends subsequent chapters so earlier chapters are never overwritten.
+    Prevents duplicate chapter appends on re-runs.
     """
     vault_dir.mkdir(parents=True, exist_ok=True)
     slug = _sanitize_slug(book_title)
@@ -45,6 +46,11 @@ def export_obsidian_marginalia(
             "",
         ]
     else:
+        existing_text = out_file.read_text(encoding="utf-8")
+        if f"### {chapter_title}" in existing_text:
+            # Already exported this chapter; do not duplicate
+            return out_file
+
         lines = [
             "",
             f"### {chapter_title}",

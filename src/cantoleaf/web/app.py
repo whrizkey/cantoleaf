@@ -1,4 +1,6 @@
 import logging
+import re
+import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -8,8 +10,16 @@ from pydantic import BaseModel
 from cantoleaf import __version__
 from cantoleaf.config import get_settings
 from cantoleaf.export.m4b import master_m4b_audiobook
+from cantoleaf.export.vault import export_obsidian_marginalia
 from cantoleaf.ingest.registry import load_document
-from cantoleaf.models import BookMetadata, DepthGear, LangMode, SynthesizedSpan
+from cantoleaf.models import (
+    BlockKind,
+    BookMetadata,
+    DepthGear,
+    LangMode,
+    SynthesizedSpan,
+    Utterance,
+)
 from cantoleaf.pipeline.accounting import UsageTracker
 from cantoleaf.pipeline.cache import AudioCache
 from cantoleaf.pipeline.synthesizer import SynthesisPipeline
@@ -22,14 +32,43 @@ app = FastAPI(title="CantoLeaf Studio", version=__version__)
 static_dir = Path(__file__).parent / "static"
 
 ALLOWED_EXTENSIONS = {".epub", ".pdf", ".docx", ".md", ".markdown", ".txt"}
+SAFE_AUDIO_FILENAME_RE = re.compile(r"^[a-zA-Z0-9_\-]+\.(mp3|wav|m4a|ogg)$")
+
+_shared_tracker: UsageTracker | None = None
+
+
+def get_shared_tracker() -> UsageTracker:
+    global _shared_tracker
+    if _shared_tracker is None:
+        settings = get_settings()
+        _shared_tracker = UsageTracker(max_budget_usd=settings.cantoleaf_max_cost_usd)
+    return _shared_tracker
+
+
+def _get_allowed_roots() -> list[Path]:
+    settings = get_settings()
+    roots = [
+        Path.cwd().resolve(),
+        (Path.home() / ".cantoleaf").resolve(),
+        settings.cantoleaf_cache_dir.resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    return roots
 
 
 def _validate_document_path(raw_path: str) -> Path:
-    """Validates that the path is a safe, existing document file."""
+    """Validates that the path is a safe, existing document file within allowed roots."""
     if not raw_path or ".." in raw_path:
         raise HTTPException(status_code=400, detail="Invalid document path format.")
 
     path = Path(raw_path).expanduser().resolve()
+    allowed_roots = _get_allowed_roots()
+    if not any(path.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: document path must be within the project directory or ~/.cantoleaf.",
+        )
+
     if path.suffix.lower() not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
@@ -125,9 +164,9 @@ async def synthesize_chapter(req: SynthesizeRequest) -> dict[str, object]:
     if lang_mode != LangMode.SOURCE:
         utterances = await weave_bilingual_stream(utterances, lang_mode, req.target_lang, adapt)
 
-    # 3. Synthesize via pipeline with cache & budget protection
+    # 3. Synthesize via pipeline with cache & budget protection using shared tracker
     cache = AudioCache()
-    tracker = UsageTracker(max_budget_usd=settings.cantoleaf_max_cost_usd)
+    tracker = get_shared_tracker()
     pipeline = SynthesisPipeline(tts, cache, tracker)
 
     results: list[dict[str, object]] = []
@@ -136,6 +175,7 @@ async def synthesize_chapter(req: SynthesizeRequest) -> dict[str, object]:
         results.append(
             {
                 "utterance_id": span.utterance_id,
+                "block_index": u.block_index,
                 "source_text": u.source_text,
                 "spoken_text": u.spoken_text,
                 "audio_url": f"/api/audio/{span.audio_path.name}",
@@ -163,18 +203,24 @@ async def synthesize_chapter(req: SynthesizeRequest) -> dict[str, object]:
 
 @app.get("/api/audio/{filename}")
 async def serve_audio(filename: str) -> FileResponse:
+    if not SAFE_AUDIO_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid audio filename format.")
+
     settings = get_settings()
-    # Search in provider subdirectories inside cache dir
+    cache_root = settings.cantoleaf_cache_dir.resolve()
     found_file: Path | None = None
-    for p in settings.cantoleaf_cache_dir.rglob(filename):
-        if p.is_file():
-            found_file = p
+
+    # Search provider subdirectories inside cache dir without allowing glob syntax
+    for p in cache_root.glob(f"**/{filename}"):
+        if p.is_file() and p.name == filename:
+            found_file = p.resolve()
             break
 
-    if not found_file or not found_file.exists():
+    if not found_file or not found_file.exists() or not found_file.is_relative_to(cache_root):
         raise HTTPException(status_code=404, detail="Audio file not found in cache.")
 
-    return FileResponse(found_file, media_type="audio/mpeg")
+    media_type = "audio/mpeg" if found_file.suffix.lower() == ".mp3" else "audio/wav"
+    return FileResponse(found_file, media_type=media_type)
 
 
 @app.post("/api/book/export-m4b")
@@ -191,7 +237,7 @@ async def export_m4b(req: ExportRequest) -> dict[str, object]:
     tts = get_tts_provider(req.provider or settings.cantoleaf_tts_provider.value)
     adapt = get_adapt_provider(settings.cantoleaf_adapt_provider.value)
     cache = AudioCache()
-    tracker = UsageTracker(max_budget_usd=settings.cantoleaf_max_cost_usd)
+    tracker = get_shared_tracker()
     pipeline = SynthesisPipeline(tts, cache, tracker)
 
     all_spans: list[SynthesizedSpan] = []
@@ -207,7 +253,18 @@ async def export_m4b(req: ExportRequest) -> dict[str, object]:
             cursor_s += span.duration_sec + span.pause_after_sec
         chapter_markers.append((ch.title, ch_start, cursor_s))
 
-    out_file = Path(req.out_path or f"{safe_path.stem}.m4b").resolve()
+    allowed_roots = _get_allowed_roots()
+    if req.out_path:
+        candidate_out = Path(req.out_path).expanduser().resolve()
+        if not any(candidate_out.is_relative_to(root) for root in allowed_roots):
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: out_path must be within working directory or ~/.cantoleaf.",
+            )
+        out_file = candidate_out
+    else:
+        out_file = (Path.cwd() / f"{safe_path.stem}_{gear.value}.m4b").resolve()
+
     mastered = master_m4b_audiobook(
         all_spans,
         chapter_markers,
@@ -222,3 +279,36 @@ async def export_m4b(req: ExportRequest) -> dict[str, object]:
         "out_file": str(mastered),
         "total_duration_sec": round(cursor_s, 2),
     }
+
+
+class CrystallizeRequest(BaseModel):
+    book_title: str
+    author: str = "Unknown"
+    chapter_title: str
+    source_text: str
+    block_index: int = 0
+    vault_dir: str = "./notes"
+
+
+@app.post("/api/chapter/crystallize")
+async def crystallize_note(req: CrystallizeRequest) -> dict[str, str]:
+    u = Utterance(
+        utterance_id=f"crystallize:{req.block_index}",
+        chapter_index=0,
+        block_index=req.block_index,
+        gear=DepthGear.VERBATIM,
+        lang_mode=LangMode.SOURCE,
+        block_kind=BlockKind.QUOTE,
+        source_text=req.source_text,
+        spoken_text=req.source_text,
+    )
+
+    allowed_roots = _get_allowed_roots()
+    v_dir = Path(req.vault_dir).expanduser().resolve()
+    if not any(v_dir.is_relative_to(root) for root in allowed_roots):
+        v_dir = (Path.cwd() / "notes").resolve()
+
+    saved_path = export_obsidian_marginalia(
+        req.book_title, req.author, req.chapter_title, [u], v_dir
+    )
+    return {"status": "saved", "path": str(saved_path)}

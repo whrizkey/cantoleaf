@@ -1,5 +1,6 @@
 from cantoleaf.config import get_settings
 from cantoleaf.errors import ProviderError
+from cantoleaf.providers.adapt.anthropic import AnthropicAdaptProvider
 from cantoleaf.providers.adapt.deepl import DeeplAdaptProvider
 from cantoleaf.providers.adapt.extractive import ExtractiveAdaptProvider
 from cantoleaf.providers.adapt.openai_compat import OpenAiCompatAdaptProvider
@@ -49,11 +50,16 @@ def get_adapt_provider(name: str) -> AdaptProvider:
 
     if normalized in ("extractive", "fake"):
         return ExtractiveAdaptProvider()
-    if normalized in ("openai", "openai_compat", "anthropic"):
+    if normalized in ("openai", "openai_compat"):
         return OpenAiCompatAdaptProvider(
-            api_key=settings.openai_api_key or settings.anthropic_api_key,
+            api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
             model=settings.cantoleaf_adapt_model or "gpt-4o-mini",
+        )
+    if normalized == "anthropic":
+        return AnthropicAdaptProvider(
+            api_key=settings.anthropic_api_key,
+            model=settings.cantoleaf_adapt_model or "claude-3-5-haiku-20241022",
         )
     if normalized == "deepl":
         return DeeplAdaptProvider(api_key=settings.deepl_api_key)

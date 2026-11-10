@@ -42,6 +42,11 @@ def master_m4b_audiobook(
     concat_list = temp_dir / "concat_list.txt"
     silence_cache: dict[float, Path] = {}
 
+    # Detect primary audio format from spans (e.g. .mp3 vs .wav) to match demuxer codecs
+    primary_ext = ".mp3"
+    if spans and spans[0].audio_path.suffix.lower() == ".wav":
+        primary_ext = ".wav"
+
     with open(concat_list, "w", encoding="utf-8") as f:
         for span in spans:
             # Escape single quotes in filenames for ffmpeg concat demuxer
@@ -52,7 +57,7 @@ def master_m4b_audiobook(
             if span.pause_after_sec > 0.01:
                 pause_s = round(span.pause_after_sec, 3)
                 if pause_s not in silence_cache:
-                    silence_file = temp_dir / f"silence_{int(pause_s * 1000)}ms.wav"
+                    silence_file = temp_dir / f"silence_{int(pause_s * 1000)}ms{primary_ext}"
                     sr = 24000
                     if abs(pause_s - 4.0) < 0.1:
                         # Render procedural Socratic recall tick pulses for the 4-second thinking interval
@@ -60,7 +65,11 @@ def master_m4b_audiobook(
                         silence_data = np.concatenate(ticks).astype(np.float32)
                     else:
                         silence_data = np.zeros(int(sr * pause_s), dtype=np.float32)
-                    sf.write(str(silence_file), silence_data, sr)
+
+                    if primary_ext == ".mp3":
+                        sf.write(str(silence_file), silence_data, sr, format="MP3")
+                    else:
+                        sf.write(str(silence_file), silence_data, sr)
                     silence_cache[pause_s] = silence_file
 
                 safe_silence_path = str(silence_cache[pause_s].resolve()).replace("'", "'\\''")

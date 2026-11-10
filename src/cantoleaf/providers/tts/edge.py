@@ -23,6 +23,7 @@ class EdgeTtsProvider(TtsProvider):
 
     name: str = "edge"
     sample_rate: int = 24000
+    default_voice: str = "en-US-ChristopherNeural"
 
     def __init__(self, cache_dir: Path | None = None) -> None:
         if not HAS_EDGE_TTS:
@@ -69,10 +70,14 @@ class EdgeTtsProvider(TtsProvider):
                 "Edge TTS requires edge-tts. Install with: pip install cantoleaf[tts]"
             )
 
-        chosen_voice = voice or "en-US-ChristopherNeural"
+        chosen_voice = voice or self.default_voice
         rate_str = f"{'+' if rate >= 1.0 else ''}{int((rate - 1.0) * 100)}%"
 
-        out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.mp3"
+        import hashlib
+
+        safe_id = utterance.utterance_id.replace(":", "_")
+        h = hashlib.sha256(f"{chosen_voice}:{rate:.2f}".encode()).hexdigest()[:10]
+        out_path = self.cache_dir / f"{safe_id}_{h}.mp3"
         communicate = edge_tts.Communicate(
             text=utterance.spoken_text,
             voice=chosen_voice,
@@ -121,8 +126,16 @@ class EdgeTtsProvider(TtsProvider):
                 )
             )
 
+        try:
+            import soundfile as sf
+
+            info = sf.info(str(out_path))
+            if info.duration > 0:
+                dur_sec = max(dur_sec, round(info.duration, 3))
+        except Exception:
+            pass
+
         if not dur_sec:
-            # Fallback based on words
             words = utterance.spoken_text.split()
             dur_sec = max(0.5, len(words) * (0.28 / max(0.25, rate)))
 

@@ -16,6 +16,7 @@ class FakeTtsProvider(TtsProvider):
 
     name: str = "fake"
     sample_rate: int = 24000
+    default_voice: str = "fake_voice_1"
 
     def __init__(self, cache_dir: Path | None = None) -> None:
         self.cache_dir = cache_dir or Path("/tmp/cantoleaf_fake_tts")

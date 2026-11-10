@@ -249,7 +249,7 @@
 
     <script>
         let isPlaying = false;
-        let bookPath = new URLSearchParams(window.location.search).get("path") || "tests/fixtures/sample.epub";
+        let bookPath = new URLSearchParams(window.location.search).get("path") || "tests/fixtures/sample.md";
         let bookData = null;
         let currentChapterIndex = 0;
         let currentSpans = [];
@@ -264,7 +264,7 @@
                 if (res.ok) {
                     bookData = await res.json();
                     renderTOC();
-                    await loadChapter(0);
+                    await loadChapter(0, 0);
                 }
             } catch (e) {
                 console.log("No default book loaded:", e);
@@ -279,12 +279,12 @@
                 const div = document.createElement('div');
                 div.className = `toc-item ${idx === currentChapterIndex ? 'active' : ''}`;
                 div.innerText = ch.title;
-                div.onclick = () => loadChapter(idx);
+                div.onclick = () => loadChapter(idx, 0);
                 tocList.appendChild(div);
             });
         }
 
-        async function loadChapter(idx) {
+        async function loadChapter(idx, targetBlockIndex = 0) {
             currentChapterIndex = idx;
             renderTOC();
             const chTitle = bookData && bookData.chapters[idx] ? bookData.chapters[idx].title : `Chapter ${idx + 1}`;
@@ -307,9 +307,24 @@
                 const data = await res.json();
                 currentSpans = data.spans || [];
                 renderSpans();
-                currentSpanIndex = 0;
+
+                // Find matching span index by block_index to avoid losing user's place on gearshift
+                let newSpanIdx = 0;
+                if (targetBlockIndex !== undefined && targetBlockIndex !== null && currentSpans.length > 0) {
+                    const matchIdx = currentSpans.findIndex(s => (s.block_index !== undefined ? s.block_index >= targetBlockIndex : false));
+                    if (matchIdx !== -1) {
+                        newSpanIdx = matchIdx;
+                    }
+                }
+                currentSpanIndex = newSpanIdx;
+
+                const targetEl = document.getElementById(`span_${currentSpanIndex}`);
+                if (targetEl) {
+                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
                 if (isPlaying) {
-                    playSpan(0);
+                    playSpan(currentSpanIndex);
                 }
             } catch (e) {
                 document.getElementById('proseContainer').innerHTML = `<p style='color: #f87171;'>Failed to synthesize: ${e.message}</p>`;
@@ -418,19 +433,42 @@
             }
 
             if (bookData) {
-                loadChapter(currentChapterIndex);
+                const curSpan = currentSpans[currentSpanIndex];
+                const anchorBlock = curSpan && curSpan.block_index !== undefined ? curSpan.block_index : 0;
+                loadChapter(currentChapterIndex, anchorBlock);
             }
         }
 
         document.getElementById('langMode').onchange = (e) => {
             currentLangMode = e.target.value;
             if (bookData) {
-                loadChapter(currentChapterIndex);
+                const curSpan = currentSpans[currentSpanIndex];
+                const anchorBlock = curSpan && curSpan.block_index !== undefined ? curSpan.block_index : 0;
+                loadChapter(currentChapterIndex, anchorBlock);
             }
         };
 
-        function crystallizeSelection() {
-            alert("💎 Current chapter crystallized to Obsidian Vault (./notes) and Anki Deck!");
+        async function crystallizeSelection() {
+            const curSpan = currentSpans[currentSpanIndex];
+            const textToSave = curSpan ? curSpan.spoken_text : (bookData ? bookData.title : "");
+            const chTitle = bookData && bookData.chapters[currentChapterIndex] ? bookData.chapters[currentChapterIndex].title : "Chapter";
+            try {
+                const res = await fetch('/api/chapter/crystallize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        book_title: bookData ? bookData.title : "Audiobook",
+                        author: bookData ? bookData.author : "Unknown",
+                        chapter_title: chTitle,
+                        source_text: textToSave,
+                        block_index: curSpan && curSpan.block_index !== undefined ? curSpan.block_index : 0
+                    })
+                });
+                const data = await res.json();
+                alert(`💎 Crystallized note to ${data.path}!`);
+            } catch (e) {
+                alert(`Failed to crystallize note: ${e.message}`);
+            }
         }
 
         async function downloadM4B() {

@@ -15,6 +15,7 @@ class OpenAiCompatTtsProvider(TtsProvider):
 
     name: str = "openai_compat"
     sample_rate: int = 24000
+    default_voice: str = "alloy"
 
     def __init__(
         self,
@@ -52,7 +53,7 @@ class OpenAiCompatTtsProvider(TtsProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        chosen_voice = voice or "alloy"
+        chosen_voice = voice or self.default_voice
         payload = {
             "model": "tts-1",
             "input": utterance.spoken_text,
@@ -74,12 +75,28 @@ class OpenAiCompatTtsProvider(TtsProvider):
         except httpx.HTTPError as e:
             raise ProviderError(f"OpenAI network error: {e}", retryable=True) from e
 
-        out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.mp3"
+        import hashlib
+
+        safe_id = utterance.utterance_id.replace(":", "_")
+        h = hashlib.sha256(f"{chosen_voice}:{rate:.2f}".encode()).hexdigest()[:10]
+        out_path = self.cache_dir / f"{safe_id}_{h}.mp3"
         out_path.write_bytes(audio_bytes)
 
-        # Interpolate syllable/character timings
+        # Probe exact audio duration from output file
         words = utterance.spoken_text.split()
-        dur_sec = max(0.6, len(words) * 0.28 / max(0.25, rate))
+        dur_sec = 0.0
+        try:
+            import soundfile as sf
+
+            info = sf.info(str(out_path))
+            if info.duration > 0:
+                dur_sec = round(info.duration, 3)
+        except Exception:
+            pass
+
+        if not dur_sec:
+            dur_sec = max(0.6, len(words) * 0.28 / max(0.25, rate))
+
         word_dur = dur_sec / max(1, len(words))
 
         word_timings: list[WordTiming] = []

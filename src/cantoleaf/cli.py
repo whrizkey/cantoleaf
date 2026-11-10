@@ -15,7 +15,7 @@ from cantoleaf.export.lyrics import export_lrc, export_srt
 from cantoleaf.export.m4b import master_m4b_audiobook
 from cantoleaf.export.vault import export_obsidian_marginalia
 from cantoleaf.ingest.registry import load_document
-from cantoleaf.models import DepthGear, LangMode, SynthesizedSpan
+from cantoleaf.models import DepthGear, LangMode, SynthesizedSpan, Utterance
 from cantoleaf.pipeline.accounting import UsageTracker
 from cantoleaf.pipeline.cache import AudioCache
 from cantoleaf.pipeline.synthesizer import SynthesisPipeline
@@ -223,12 +223,16 @@ def convert(
             else LangMode.SOURCE
         )
 
+        # Resolve voice default: only use ChristopherNeural if provider is edge
+        chosen_voice = voice or (settings.cantoleaf_tts_voice if tts_name == "edge" else None)
+
         console.print(f"\n[bold green]Converting '{book.title}'[/bold green]")
         console.print(
             f"Gear: [cyan]{chosen_gear.value}[/cyan] | TTS: [cyan]{tts.name}[/cyan] | Chapters: [bold]{len(book.chapters)}[/bold]\n"
         )
 
         all_spans: list[SynthesizedSpan] = []
+        all_utterances: list[Utterance] = []
         chapter_markers: list[tuple[str, float, float]] = []
         cursor_s = 0.0
 
@@ -254,19 +258,31 @@ def convert(
 
                 ch_spans: list[SynthesizedSpan] = []
                 for u in utterances:
-                    span = await pipeline.synthesize_utterance(
-                        u, voice=voice or settings.cantoleaf_tts_voice
-                    )
+                    span = await pipeline.synthesize_utterance(u, voice=chosen_voice)
                     ch_spans.append(span)
                     all_spans.append(span)
+                    all_utterances.append(u)
                     cursor_s += span.duration_sec + span.pause_after_sec
 
                 chapter_markers.append((ch.title, ch_start, cursor_s))
 
                 if export_notes:
-                    export_obsidian_marginalia(
-                        book.title, book.author, ch.title, utterances, Path(vault_dir)
-                    )
+                    from cantoleaf.models import BlockKind
+
+                    if chosen_gear == DepthGear.PULSE:
+                        notes_u = utterances
+                    else:
+                        notes_u = [
+                            u
+                            for u in utterances
+                            if u.block_kind
+                            in (BlockKind.QUOTE, BlockKind.RECALL_LOCK, BlockKind.HEADING)
+                            or u.voice_role == "margin_whisper"
+                        ]
+                    if notes_u:
+                        export_obsidian_marginalia(
+                            book.title, book.author, ch.title, notes_u, Path(vault_dir)
+                        )
 
                 prog.advance(task)
 
@@ -286,11 +302,11 @@ def convert(
             cover_image=cover_path,
         )
 
-        # Export subtitles
+        # Export subtitles with real spoken text
         lrc_path = out_path.with_suffix(".lrc")
         srt_path = out_path.with_suffix(".srt")
         export_lrc(all_spans, lrc_path, book.title, book.author)
-        export_srt(all_spans, srt_path)
+        export_srt(all_spans, srt_path, [u.spoken_text for u in all_utterances])
 
         console.print("\n[bold green]✓ Conversion Complete![/bold green]")
         console.print(f"• Audiobook: [bold cyan]{mastered}[/bold cyan] ({cursor_s / 60:.1f} mins)")
@@ -314,6 +330,7 @@ def listen(
     provider: str = typer.Option(
         "", "-p", "--provider", help="TTS provider: edge | elevenlabs | fake | openai"
     ),
+    voice: str = typer.Option("", "-v", "--voice", help="TTS Voice ID or name"),
 ) -> None:
     """Synthesize and inspect audio spans for an individual chapter."""
 
@@ -323,13 +340,15 @@ def listen(
         ch = book.chapters[ch_idx]
 
         settings = get_settings()
-        tts = get_tts_provider(provider or settings.cantoleaf_tts_provider.value)
+        tts_name = provider or settings.cantoleaf_tts_provider.value
+        tts = get_tts_provider(tts_name)
         adapt = get_adapt_provider(settings.cantoleaf_adapt_provider.value)
         chosen_gear = (
             DepthGear(gear.lower())
             if gear.lower() in DepthGear._value2member_map_
             else DepthGear.VERBATIM
         )
+        chosen_voice = voice or (settings.cantoleaf_tts_voice if tts_name == "edge" else None)
 
         pipeline = SynthesisPipeline(tts, AudioCache(), UsageTracker())
         utterances = await generate_depth_stream(
@@ -340,7 +359,7 @@ def listen(
             f"\n[bold green]Chapter {ch_idx + 1}: {ch.title}[/bold green] ({len(utterances)} utterances)"
         )
         for idx, u in enumerate(utterances[:5]):
-            span = await pipeline.synthesize_utterance(u)
+            span = await pipeline.synthesize_utterance(u, voice=chosen_voice)
             console.print(
                 f"[{idx + 1}] [dim]({span.duration_sec:.1f}s)[/dim] {span.audio_path.name}"
             )

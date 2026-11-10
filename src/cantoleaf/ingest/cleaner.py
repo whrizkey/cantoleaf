@@ -3,14 +3,15 @@ import re
 # Regex for line-broken words: e.g. "com-\nputer" -> "computer"
 HYPHEN_BREAK_RE = re.compile(r"(\b[a-zA-Z]{2,})-\s*\n\s*([a-zA-Z]{2,}\b)")
 
-# Bracketed numeric citations: require whitespace or start of string before bracket to avoid variable indexing x[1]
-CITATION_RE = re.compile(
-    r"(?<=\s)\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]|^\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]"
-)
+# Bracketed numeric citations regex pattern
+CITE_PATTERN = re.compile(r"(\b[a-zA-Z0-9_]+\b|[^\w\s]|\s|^)(\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\])")
 
-# Author-year citations: require "et al." or explicit author names like (Smith, 2020) but NOT (New York, 1999) or (1999)
+# Author-year citations: require multiple authors, "et al.", semicolons, or page numbers
+# Preserves location/company parentheticals like (Berlin, 1989), (Apple, 1976), (New York, 1999)
 AUTHOR_YEAR_RE = re.compile(
-    r"\([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+et\s+al\.?)?,\s*\d{4}(?:;\s*[A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+et\s+al\.?)?,\s*\d{4})*\)"
+    r"\([A-Z][a-z]+(?:\s+(?:and|&)\s+[A-Z][a-z]+|\s+et\s+al\.?),\s*\d{4}[a-z]?(?:;\s*[A-Z][a-z]+(?:\s+(?:and|&)\s+[A-Z][a-z]+|\s+et\s+al\.?)?,\s*\d{4}[a-z]?)*(?:,\s*p{1,2}\.?\s*\d+)?\)"
+    r"|\([A-Z][a-z]+,\s*\d{4}[a-z]?(?:;\s*[A-Z][a-z]+,\s*\d{4}[a-z]?)+(?:,\s*p{1,2}\.?\s*\d+)?\)"
+    r"|\([A-Z][a-z]+,\s*\d{4}[a-z]?,\s*p{1,2}\.?\s*\d+\)"
 )
 
 # URLs
@@ -18,6 +19,17 @@ URL_RE = re.compile(r"https?://[^\s)\]>]+")
 
 # Multiple consecutive blank lines
 CONSECUTIVE_BLANKS_RE = re.compile(r"\n{3,}")
+
+
+def _strip_bracket_citations(text: str) -> str:
+    def repl(m: re.Match[str]) -> str:
+        pre = m.group(1) or ""
+        # Preserve single-letter variable indexing like x[1]
+        if len(pre) == 1 and pre.isalpha():
+            return m.group(0)
+        return pre
+
+    return CITE_PATTERN.sub(repl, text)
 
 
 def clean_text(
@@ -30,7 +42,8 @@ def clean_text(
     """
     Cleans raw document text for high-quality audio narration:
     - Repairs words broken across lines with hyphens
-    - Strips citation brackets like [1] or [12-14] while preserving code like x[1]
+    - Strips citation brackets like [1] or claim[3] while preserving code like x[1]
+    - Strips author-year citations while preserving historical parentheticals like (Berlin, 1989)
     - Replaces raw web URLs with 'web link'
     - Normalizes irregular whitespace and quotes
     """
@@ -40,7 +53,7 @@ def clean_text(
         res = HYPHEN_BREAK_RE.sub(r"\1\2", res)
 
     if skip_citations:
-        res = CITATION_RE.sub("", res)
+        res = _strip_bracket_citations(res)
         res = AUTHOR_YEAR_RE.sub("", res)
 
     if simplify_urls:

@@ -6,7 +6,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
 
-> **Status: Pre-Alpha (Milestone M0 Bootstrap Complete)**
+> **Status: v0.1.0 — Cognitive Audio Reader & Audiobook Studio**
 
 **CantoLeaf** is an open-source, BYOK (Bring Your Own Key) & local-first **cognitive audio reader and audiobook studio** designed around how humans actually acquire knowledge from books.
 
@@ -52,7 +52,7 @@ uv run ruff check .
 # Type-check with strict mypy
 uv run mypy src tests
 
-# Run offline test suite (including 14 review regression tests)
+# Run offline test suite (38 unit and review regression tests)
 uv run pytest
 ```
 

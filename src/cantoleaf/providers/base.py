@@ -19,6 +19,7 @@ class TtsProvider(Protocol):
 
     name: str
     sample_rate: int
+    default_voice: str
 
     async def list_voices(self, language: str = "en") -> list[Voice]:
         """Lists available voices for the specified language."""

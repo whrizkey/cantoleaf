@@ -10,12 +10,34 @@ from cantoleaf.ingest.cleaner import clean_text
 from cantoleaf.models import BookMetadata, Chapter, SemanticBlock
 
 HEADING_REGEX = re.compile(
-    r"^(?:chapter\b|part\s+(?:[0-9ivxlcdm]+|[a-z]+|\b)|section\s+(?:[0-9ivxlcdm]+|[a-z]+|\b)|prologue\b|epilogue\b)",
+    r"^(?:(?:chapter|part|section)\s+(?:[0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\s*[:.\-—]|\s+[A-Z]|\s*$)|prologue\b|epilogue\b|introduction\b|conclusion\b)",
     re.IGNORECASE,
 )
 PAGE_NUM_REGEX = re.compile(
     r"^(?:page\s+)?(?:[0-9]+|[ivxlcdm]+)(?:\s+of\s+[0-9]+)?$", re.IGNORECASE
 )
+
+
+def _is_probable_heading(line: str) -> bool:
+    cleaned = line.strip()
+    if len(cleaned) > 75 or len(cleaned) < 3:
+        return False
+    if not HEADING_REGEX.match(cleaned):
+        return False
+    # Disqualify prose sentences that happen to mention a chapter/section
+    lower = f" {cleaned.lower()} "
+    narrative_markers = (
+        " shows ",
+        " describes ",
+        " illustrates ",
+        " explains ",
+        " is ",
+        " was ",
+        " were ",
+        " had ",
+        " of ",
+    )
+    return not any(m in lower for m in narrative_markers)
 
 
 def parse_pdf(file_path: Path) -> BookMetadata:
@@ -88,18 +110,13 @@ def parse_pdf(file_path: Path) -> BookMetadata:
                 # Check if first line of block is a heading (e.g. "Chapter 1\nContent...")
                 lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
                 sub_blocks: list[tuple[str, bool]] = []
-                if (
-                    lines
-                    and len(lines[0]) < 80
-                    and bool(HEADING_REGEX.match(lines[0]))
-                    and len(lines) > 1
-                ):
+                if lines and len(lines) > 1 and _is_probable_heading(lines[0]):
                     sub_blocks.append((lines[0], True))
                     rest = " ".join(lines[1:]).strip()
                     if rest:
                         sub_blocks.append((rest, False))
                 else:
-                    is_h = len(cleaned) < 80 and bool(HEADING_REGEX.match(cleaned))
+                    is_h = _is_probable_heading(cleaned)
                     sub_blocks.append((cleaned, is_h))
 
                 for sub_text, is_heading in sub_blocks:

@@ -2,7 +2,11 @@ import re
 
 from cantoleaf.models import BlockKind
 
-FOOTNOTE_PATTERN = re.compile(r"^(?:\[\^[\w\-]+\]:|\[\d+\]\s+[A-Z]|(?:\*|\u2020|\u2021)\s+[A-Z])")
+# Footnotes: match [^1]:, [1] Note, daggers (†, ‡), or asterisk footnote markers like * Note: or *1
+# Does NOT match standard markdown bullet list items like "* First item"
+FOOTNOTE_PATTERN = re.compile(
+    r"^(?:\[\^[\w\-]+\]:|\[\d+\]\s+[A-Z]|(?:\u2020|\u2021)\s+[A-Z]|\*(?:\*|\s*(?:Note|See|Ibid|Source):?|\s*\d+))"
+)
 
 
 def classify_block(

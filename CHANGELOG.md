@@ -38,5 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User Interfaces**:
   - CLI: `cantoleaf convert` (batch .m4b synthesis), `cantoleaf listen`, `cantoleaf studio` (web reader launcher), `cantoleaf doctor`, `cantoleaf estimate`, `cantoleaf version`.
   - Responsive Web Studio SPA with live Depth Gearshift slider, real-time HTML5 audio playback with millisecond word highlighting, and .m4b export.
-- **Review Bug Fixes**:
-  - Fixed 14 defects from repository review: cache key dimensions, EPUB space separation & spine traversal, opening-only anecdote detection, indentation-preserving code classification, author-year citation preservation, abbreviation segmentation, m4b pause cushion synchronization, Obsidian slug sanitization, PDF image filtering & heading recognition, repeated word alignment cursor, httpx retry wrapping, and FFMETADATA special character escaping.
+- **Review Bug Fixes (Rounds 1 & 2)**:
+  - **Cache Key Symmetry & Default Voice**: Pre-resolved provider default voices upfront in `SynthesisPipeline` so cache checks and writes use identical concrete voice keys, eliminating cache misses on default voice.
+  - **Output File Collision Prevention**: Hashed voice and speech rate into cached audio filenames across all providers (Edge, ElevenLabs, OpenAI, Fake), preventing cross-voice overwrites.
+  - **Accurate Audio Durations**: Probed synthesized audio files with `soundfile.info()` to replace rough word-count approximations with actual audio durations.
+  - **Spend Cap & Pricing Path Resolution**: Added multi-directory `find_pricing_path()` for `pricing.toml`, treated `<= 0` as unlimited spending without raising `BudgetExceededError`, added token-based `record_llm_usage()`, and exempted localhost/127.0.0.1 from usage costs.
+  - **Web Studio Security**: Strictly validated document and export paths against allowed roots (`cwd`, `~/.cantoleaf`, `tempfile`), rejected path traversal and absolute system paths, enforced strict regex on audio filenames to eliminate glob wildcards, and used a global shared tracker to prevent budget resets across requests.
+  - **Web Studio Place Retention**: Anchored playback across Depth Gears via `block_index` mapping so shifting between Pulse, Crux, and Verbatim never loses the user's place in the book.
+  - **Note Crystallization**: Wired the Studio "Crystallize Note" UI button to `POST /api/chapter/crystallize` writing Obsidian-compatible marginalia.
+  - **Subtitles & CLI**: Replaced utterance IDs in `.srt` subtitles with actual spoken text, only defaulted to Edge voice when the Edge provider is active, and filtered notes export in `convert --notes` to key passages while preventing duplicate chapter blocks on repeated runs.
+  - **Credential Routing**: Built dedicated `AnthropicAdaptProvider` for `api.anthropic.com` with `x-api-key` and `anthropic-version` headers, preventing Anthropic keys from being sent to OpenAI endpoints.
+  - **ffmpeg Concat Silence Codec**: Generated silence cushions in matching audio format (MP3 vs WAV) to eliminate concat demuxer stream codec incompatibilities.
+  - **Document Ingest Hardening**:
+    - EPUB: Filtered by `ebooklib.ITEM_DOCUMENT` and word boundaries so chapters like "discovery", "recovery", and "stock" are never dropped; expanded coverage to `h4`-`h6`, `li`, `pre`, `table`; eliminated duplicate nested tags inside blockquote/aside; extracted cover image into `BookMetadata.cover_image`.
+    - PDF: Hardened heading regex with narrative verb exclusion so sentences mentioning chapters or sections do not slice prose paragraphs in half.
+    - Markdown / DOCX: Preserved leading indentation for code blocks, and restricted DOCX chapter splits to Heading 1 or short chapter titles.
+    - Cleaner & Classifier: Stripped attached citations like `claim[3]` while preserving variable indexing `x[1]`; preserved entity/historical dates like `(Berlin, 1989)` and `(Apple, 1976)`; and fixed markdown list items starting with `* ` being falsely classified as footnotes.
+    - Slug Sanitization: Enabled Unicode-aware regex matching for Obsidian and Anki filenames, preserving non-Latin characters (e.g. Japanese, Cyrillic).

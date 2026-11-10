@@ -3,7 +3,7 @@ from pathlib import Path
 from cantoleaf.errors import IngestError
 from cantoleaf.ingest.classifier import classify_block
 from cantoleaf.ingest.cleaner import clean_text
-from cantoleaf.models import BookMetadata, Chapter, SemanticBlock
+from cantoleaf.models import BlockKind, BookMetadata, Chapter, SemanticBlock
 
 
 def parse_markdown_or_txt(file_path: Path) -> BookMetadata:
@@ -34,12 +34,16 @@ def parse_markdown_or_txt(file_path: Path) -> BookMetadata:
                 paragraphs.append("\n".join(curr_para))
                 curr_para = []
             paragraphs.append(stripped)
+        elif line.startswith("    ") or line.startswith("\t"):
+            # Preserve leading indentation for code blocks
+            curr_para.append(line.rstrip())
         else:
             curr_para.append(stripped)
     if curr_para:
         paragraphs.append("\n".join(curr_para))
 
     for p in paragraphs:
+        is_code = p.startswith("    ") or p.startswith("\t") or p.startswith("```")
         cleaned = clean_text(p)
         if not cleaned:
             continue
@@ -60,7 +64,7 @@ def parse_markdown_or_txt(file_path: Path) -> BookMetadata:
                 current_blocks = []
             current_title = cleaned.lstrip("#").strip()
 
-        kind = classify_block(cleaned, is_heading=is_heading)
+        kind = BlockKind.CODE if is_code else classify_block(cleaned, is_heading=is_heading)
         current_blocks.append(
             SemanticBlock(
                 block_index=blk_idx,
@@ -117,9 +121,12 @@ def parse_docx(file_path: Path) -> BookMetadata:
             continue
 
         style_name = para.style.name.lower() if para.style and para.style.name else ""
-        is_heading = "heading" in style_name or cleaned.lower().startswith("chapter ")
+        is_heading_1 = style_name in ("heading 1", "title") or (
+            len(cleaned) < 80 and cleaned.lower().startswith("chapter ")
+        )
+        is_subheading = "heading" in style_name and not is_heading_1
 
-        if is_heading:
+        if is_heading_1:
             if current_blocks:
                 est_chars = sum(len(x.text) for x in current_blocks)
                 chapters.append(
@@ -134,7 +141,7 @@ def parse_docx(file_path: Path) -> BookMetadata:
                 current_blocks = []
             current_title = cleaned
 
-        kind = classify_block(cleaned, is_heading=is_heading)
+        kind = classify_block(cleaned, is_heading=(is_heading_1 or is_subheading))
         current_blocks.append(
             SemanticBlock(
                 block_index=blk_idx,

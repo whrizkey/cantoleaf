@@ -47,7 +47,16 @@ def export_srt_manifest(
     entries: list[str] = []
     timeline_s = 0.0
 
-    texts = utterance_texts if utterance_texts is not None else [s.utterance_id for s in spans]
+    texts: list[str] = []
+    if utterance_texts is not None:
+        texts = utterance_texts
+    else:
+        for s in spans:
+            if s.word_timings:
+                texts.append(" ".join(wt.word for wt in s.word_timings))
+            else:
+                texts.append(s.utterance_id)
+
     for i, (span, text) in enumerate(zip(spans, texts, strict=False)):
         start_t = timeline_s
         end_t = timeline_s + span.duration_sec
@@ -69,5 +78,9 @@ def export_srt_manifest(
 export_lrc = export_lrc_manifest
 
 
-def export_srt(spans: list[SynthesizedSpan], out_path: Path) -> Path:
-    return export_srt_manifest(spans, None, out_path)
+def export_srt(
+    spans: list[SynthesizedSpan],
+    out_path: Path,
+    utterance_texts: list[str] | None = None,
+) -> Path:
+    return export_srt_manifest(spans, utterance_texts, out_path)
