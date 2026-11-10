@@ -1,7 +1,8 @@
-import pytest
-from hypothesis import given, strategies as st
-from cantoleaf.ingest.segmenter import split_into_sentences
+from hypothesis import given
+from hypothesis import strategies as st
+
 from cantoleaf.ingest.cleaner import clean_text
+from cantoleaf.ingest.segmenter import split_into_sentences
 
 
 @given(st.text(min_size=1, max_size=500))
