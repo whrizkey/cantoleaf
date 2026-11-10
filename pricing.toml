@@ -1,0 +1,23 @@
+# Pricing table for BYOK cost estimation (USD)
+# Users can freely edit these rates to match their contracted rates.
+
+[tts]
+# Cost per 1,000 characters
+edge = 0.0
+kokoro = 0.0
+piper = 0.0
+fake = 0.0
+elevenlabs_standard = 0.030
+elevenlabs_creator = 0.018
+openai_tts = 0.015
+openai_tts_hd = 0.030
+
+[llm]
+# Cost per 1,000 tokens (input, output)
+extractive = { input = 0.0, output = 0.0 }
+fake = { input = 0.0, output = 0.0 }
+gpt_4o_mini = { input = 0.00015, output = 0.00060 }
+gpt_4o = { input = 0.0025, output = 0.010 }
+claude_3_5_haiku = { input = 0.0008, output = 0.004 }
+claude_3_5_sonnet = { input = 0.003, output = 0.015 }
+deepl = { input = 0.00002, output = 0.0 }
