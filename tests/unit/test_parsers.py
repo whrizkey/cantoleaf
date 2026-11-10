@@ -13,7 +13,7 @@ def test_markdown_parser(tmp_path: Path) -> None:
 This is the opening argument of the book.
 
 ## Background
-In 1995, an interesting event happened for instance when systems changed.
+For instance, consider the remarkable case where an interesting event happened when systems changed across the entire department.
 
 | Column 1 | Column 2 |
 | --- | --- |

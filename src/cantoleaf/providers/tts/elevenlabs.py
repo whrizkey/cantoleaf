@@ -30,22 +30,27 @@ class ElevenLabsTtsProvider(TtsProvider):
             return []
         url = "https://api.elevenlabs.io/v1/voices"
         headers = {"xi-api-key": self.api_key}
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers)
-            if resp.status_code != 200:
-                raise ProviderError(
-                    f"ElevenLabs list_voices failed ({resp.status_code}): {resp.text}"
-                )
-            data = resp.json()
-            return [
-                Voice(
-                    voice_id=v["voice_id"],
-                    name=v["name"],
-                    language=language,
-                    provider=self.name,
-                )
-                for v in data.get("voices", [])
-            ]
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code != 200:
+                    raise ProviderError(
+                        f"ElevenLabs list_voices failed ({resp.status_code}): {resp.text}"
+                    )
+                data = resp.json()
+                return [
+                    Voice(
+                        voice_id=v["voice_id"],
+                        name=v["name"],
+                        language=language,
+                        provider=self.name,
+                    )
+                    for v in data.get("voices", [])
+                ]
+        except httpx.HTTPError as e:
+            raise ProviderError(
+                f"ElevenLabs network error during list_voices: {e}", retryable=True
+            ) from e
 
     async def synthesize(
         self,
@@ -65,27 +70,32 @@ class ElevenLabsTtsProvider(TtsProvider):
             "xi-api-key": self.api_key,
             "Content-Type": "application/json",
         }
+        speed_factor = max(0.7, min(1.2, float(rate)))
         payload = {
             "text": utterance.spoken_text,
             "model_id": self.model_id,
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.75,
+                "speed": speed_factor,
             },
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code == 429:
-                raise ProviderError("ElevenLabs rate limit exceeded (429)", retryable=True)
-            if resp.status_code != 200:
-                raise ProviderError(
-                    f"ElevenLabs synthesis failed ({resp.status_code}): {resp.text}"
-                )
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 429:
+                    raise ProviderError("ElevenLabs rate limit exceeded (429)", retryable=True)
+                if resp.status_code != 200:
+                    raise ProviderError(
+                        f"ElevenLabs synthesis failed ({resp.status_code}): {resp.text}"
+                    )
 
-            data = resp.json()
-            audio_bytes = base64.b64decode(data["audio_base64"])
-            alignment = data.get("alignment", {})
+                data = resp.json()
+                audio_bytes = base64.b64decode(data["audio_base64"])
+                alignment = data.get("alignment", {})
+        except httpx.HTTPError as e:
+            raise ProviderError(f"ElevenLabs network error: {e}", retryable=True) from e
 
         out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.mp3"
         out_path.write_bytes(audio_bytes)

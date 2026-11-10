@@ -68,11 +68,17 @@ class LookaheadScheduler:
         )
 
         spans: list[SynthesizedSpan] = []
+        prewarmed = self.toc_prewarm_cache.get(chapter_index, [])
+        prewarmed_map = {s.utterance_id: s for s in prewarmed}
+
         for u in weaved_stream:
             if self.generation != current_gen:
                 # Seek occurred! Cancel remaining work
                 break
-            span = await self.pipeline.synthesize_utterance(u)
+            if u.utterance_id in prewarmed_map:
+                span = prewarmed_map[u.utterance_id]
+            else:
+                span = await self.pipeline.synthesize_utterance(u)
             spans.append(span)
             if on_span_ready:
                 on_span_ready(u, span)

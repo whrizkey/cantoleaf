@@ -29,10 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Chaptered `.m4b` AAC mastering using ffmpeg concat demuxer with embedded TOC and cover art.
   - Exact `.lrc` and `.srt` subtitle/lyrics synchronization.
 - **BYOK & Local Provider Stack**:
-  - Microsoft Edge TTS (free, zero-key, native WordBoundary alignment).
-  - ElevenLabs BYOK with character/word timestamp parsing.
+  - Microsoft Edge TTS (free, zero-key, native WordBoundary alignment with cursor tracking).
+  - ElevenLabs BYOK with character/word timestamp parsing and rate control.
   - OpenAI-compatible TTS (OpenAI, Groq, Kokoro-FastAPI, LocalAI).
   - 100% offline Extractive adapter (zero LLM keys needed).
+  - OpenAI-compatible LLM adapter and DeepL API translation provider.
+  - UsageTracker circuit breaker spend cap reading unit rates from `pricing.toml`.
 - **User Interfaces**:
-  - CLI: `cantoleaf doctor`, `cantoleaf estimate`, `cantoleaf version`.
-  - Responsive Web Studio SPA with live Depth Gearshift slider, word-by-word active highlighting, and export drawer.
+  - CLI: `cantoleaf convert` (batch .m4b synthesis), `cantoleaf listen`, `cantoleaf studio` (web reader launcher), `cantoleaf doctor`, `cantoleaf estimate`, `cantoleaf version`.
+  - Responsive Web Studio SPA with live Depth Gearshift slider, real-time HTML5 audio playback with millisecond word highlighting, and .m4b export.
+- **Review Bug Fixes**:
+  - Fixed 14 defects from repository review: cache key dimensions, EPUB space separation & spine traversal, opening-only anecdote detection, indentation-preserving code classification, author-year citation preservation, abbreviation segmentation, m4b pause cushion synchronization, Obsidian slug sanitization, PDF image filtering & heading recognition, repeated word alignment cursor, httpx retry wrapping, and FFMETADATA special character escaping.

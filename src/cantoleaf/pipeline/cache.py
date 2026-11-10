@@ -3,7 +3,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from cantoleaf.models import SynthesizedSpan, WordTiming
+from cantoleaf.models import BlockKind, SynthesizedSpan, WordTiming
 
 
 class AudioCache:
@@ -19,34 +19,58 @@ class AudioCache:
         self._init_db()
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS synthesis_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    utterance_id TEXT,
-                    audio_path TEXT,
-                    duration_sec REAL,
-                    pause_after_sec REAL,
-                    word_timings_json TEXT,
-                    provider TEXT,
-                    voice TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            with conn:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS synthesis_cache (
+                        cache_key TEXT PRIMARY KEY,
+                        utterance_id TEXT,
+                        audio_path TEXT,
+                        duration_sec REAL,
+                        pause_after_sec REAL,
+                        word_timings_json TEXT,
+                        provider TEXT,
+                        voice TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+        finally:
+            conn.close()
 
     @staticmethod
-    def compute_key(text: str, provider: str, voice: str, rate: float) -> str:
-        raw = f"{text.strip()}::{provider}::{voice}::{rate:.2f}"
+    def compute_key(
+        text: str,
+        provider: str,
+        voice: str,
+        rate: float,
+        block_kind: BlockKind = BlockKind.PROSE,
+        enable_earcons: bool = False,
+    ) -> str:
+        raw = (
+            f"{text.strip()}::{provider}::{voice}::{rate:.2f}::{block_kind.value}::{enable_earcons}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def get(self, text: str, provider: str, voice: str, rate: float) -> SynthesizedSpan | None:
-        key = self.compute_key(text, provider, voice, rate)
-        with sqlite3.connect(self.db_path) as conn:
+    def get(
+        self,
+        text: str,
+        provider: str,
+        voice: str,
+        rate: float,
+        block_kind: BlockKind = BlockKind.PROSE,
+        enable_earcons: bool = False,
+    ) -> SynthesizedSpan | None:
+        key = self.compute_key(text, provider, voice, rate, block_kind, enable_earcons)
+        conn = sqlite3.connect(self.db_path)
+        try:
             row = conn.execute(
                 "SELECT utterance_id, audio_path, duration_sec, pause_after_sec, word_timings_json, provider, voice FROM synthesis_cache WHERE cache_key = ?",
                 (key,),
             ).fetchone()
+        finally:
+            conn.close()
 
         if not row:
             return None
@@ -77,8 +101,15 @@ class AudioCache:
             voice=row[6],
         )
 
-    def put(self, text: str, rate: float, span: SynthesizedSpan) -> None:
-        key = self.compute_key(text, span.provider, span.voice, rate)
+    def put(
+        self,
+        text: str,
+        rate: float,
+        span: SynthesizedSpan,
+        block_kind: BlockKind = BlockKind.PROSE,
+        enable_earcons: bool = False,
+    ) -> None:
+        key = self.compute_key(text, span.provider, span.voice, rate, block_kind, enable_earcons)
         timings_data = [
             {
                 "word": wt.word,
@@ -90,21 +121,25 @@ class AudioCache:
             for wt in span.word_timings
         ]
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO synthesis_cache
-                (cache_key, utterance_id, audio_path, duration_sec, pause_after_sec, word_timings_json, provider, voice)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    key,
-                    span.utterance_id,
-                    str(span.audio_path),
-                    span.duration_sec,
-                    span.pause_after_sec,
-                    json.dumps(timings_data),
-                    span.provider,
-                    span.voice,
-                ),
-            )
+        conn = sqlite3.connect(self.db_path)
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO synthesis_cache
+                    (cache_key, utterance_id, audio_path, duration_sec, pause_after_sec, word_timings_json, provider, voice)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        key,
+                        span.utterance_id,
+                        str(span.audio_path),
+                        span.duration_sec,
+                        span.pause_after_sec,
+                        json.dumps(timings_data),
+                        span.provider,
+                        span.voice,
+                    ),
+                )
+        finally:
+            conn.close()

@@ -2,6 +2,7 @@ import numpy as np
 import soundfile as sf
 
 from cantoleaf.models import BlockKind, SynthesizedSpan, Utterance
+from cantoleaf.pipeline.accounting import UsageTracker
 from cantoleaf.pipeline.cache import AudioCache
 from cantoleaf.providers.base import TtsProvider
 from cantoleaf.workflows.earcons import (
@@ -14,12 +15,18 @@ from cantoleaf.workflows.earcons import (
 class SynthesisPipeline:
     """
     Coordinates TTS execution, procedural earcon prefixing/suffixing,
-    and SQLite cache lookups.
+    spend tracking, and SQLite cache lookups.
     """
 
-    def __init__(self, tts_provider: TtsProvider, cache: AudioCache) -> None:
+    def __init__(
+        self,
+        tts_provider: TtsProvider,
+        cache: AudioCache,
+        usage_tracker: UsageTracker | None = None,
+    ) -> None:
         self.tts = tts_provider
         self.cache = cache
+        self.tracker = usage_tracker
 
     async def synthesize_utterance(
         self,
@@ -29,10 +36,23 @@ class SynthesisPipeline:
         rate: float = 1.0,
         enable_earcons: bool = True,
     ) -> SynthesizedSpan:
-        # Check cache first
-        cached = self.cache.get(utterance.spoken_text, self.tts.name, voice or "default", rate)
+        chosen_voice = voice or getattr(utterance, "target_voice", None) or "default"
+
+        # Check cache first (includes block_kind and enable_earcons)
+        cached = self.cache.get(
+            utterance.spoken_text,
+            self.tts.name,
+            chosen_voice,
+            rate,
+            block_kind=utterance.block_kind,
+            enable_earcons=enable_earcons,
+        )
         if cached:
             return cached
+
+        # Enforce budget before cloud API call
+        if self.tracker:
+            self.tracker.record_tts_usage(self.tts.name, len(utterance.spoken_text))
 
         # Synthesize fresh clip
         span = await self.tts.synthesize(utterance, voice=voice, rate=rate)
@@ -43,19 +63,20 @@ class SynthesisPipeline:
             BlockKind.QUOTE,
             BlockKind.TABLE,
         ):
+            speech_data, sr = sf.read(str(span.audio_path))
+            if speech_data.ndim > 1:
+                speech_data = speech_data.mean(axis=1)
+
+            # Generate earcon matched to the actual audio sample rate
             earcon_audio = None
             if utterance.block_kind == BlockKind.HEADING:
-                earcon_audio = generate_heading_chime(self.tts.sample_rate)
+                earcon_audio = generate_heading_chime(sr)
             elif utterance.block_kind == BlockKind.QUOTE:
-                earcon_audio = generate_quote_pluck(self.tts.sample_rate)
+                earcon_audio = generate_quote_pluck(sr)
             elif utterance.block_kind == BlockKind.TABLE:
-                earcon_audio = generate_figure_card_chime(self.tts.sample_rate)
+                earcon_audio = generate_figure_card_chime(sr)
 
             if earcon_audio is not None:
-                speech_data, sr = sf.read(str(span.audio_path))
-                if speech_data.ndim > 1:
-                    speech_data = speech_data.mean(axis=1)
-
                 combined = np.concatenate([earcon_audio, speech_data]).astype(np.float32)
                 sf.write(str(span.audio_path), combined, sr)
 
@@ -81,6 +102,12 @@ class SynthesisPipeline:
                     voice=span.voice,
                 )
 
-        # Store in cache
-        self.cache.put(utterance.spoken_text, rate, span)
+        # Store in cache with exact key parameters
+        self.cache.put(
+            utterance.spoken_text,
+            rate,
+            span,
+            block_kind=utterance.block_kind,
+            enable_earcons=enable_earcons,
+        )
         return span

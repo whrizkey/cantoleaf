@@ -1,7 +1,14 @@
 from pathlib import Path
 
-import edge_tts
-from edge_tts.submaker import SubMaker
+try:
+    import edge_tts
+    from edge_tts.submaker import SubMaker
+
+    HAS_EDGE_TTS = True
+except ImportError:
+    HAS_EDGE_TTS = False
+    edge_tts = None  # type: ignore
+    SubMaker = None  # type: ignore
 
 from cantoleaf.errors import ProviderError
 from cantoleaf.models import SynthesizedSpan, Utterance, WordTiming
@@ -18,10 +25,18 @@ class EdgeTtsProvider(TtsProvider):
     sample_rate: int = 24000
 
     def __init__(self, cache_dir: Path | None = None) -> None:
+        if not HAS_EDGE_TTS:
+            raise ProviderError(
+                "Edge TTS requires edge-tts. Install with: pip install cantoleaf[tts]"
+            )
         self.cache_dir = cache_dir or Path("~/.cantoleaf/cache/edge").expanduser()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     async def list_voices(self, language: str = "en") -> list[Voice]:
+        if not HAS_EDGE_TTS or edge_tts is None:
+            raise ProviderError(
+                "Edge TTS requires edge-tts. Install with: pip install cantoleaf[tts]"
+            )
         try:
             voices = await edge_tts.list_voices()
         except Exception as e:
@@ -49,6 +64,11 @@ class EdgeTtsProvider(TtsProvider):
         voice: str | None = None,
         rate: float = 1.0,
     ) -> SynthesizedSpan:
+        if not HAS_EDGE_TTS or edge_tts is None or SubMaker is None:
+            raise ProviderError(
+                "Edge TTS requires edge-tts. Install with: pip install cantoleaf[tts]"
+            )
+
         chosen_voice = voice or "en-US-ChristopherNeural"
         rate_str = f"{'+' if rate >= 1.0 else ''}{int((rate - 1.0) * 100)}%"
 
@@ -73,18 +93,23 @@ class EdgeTtsProvider(TtsProvider):
                 retryable=True,
             ) from e
 
-        # Extract word timings from SubMaker or calculate duration
-        # Approximate duration using file length / average mp3 bitrate if necessary, or word boundaries
+        # Extract word timings with cursor to correctly map repeated words
         word_timings: list[WordTiming] = []
         dur_sec = 0.0
+        char_cursor = 0
 
         for cue in sub_maker.cues:
-            # cue.start is a timedelta
             start_s = cue.start.total_seconds()
             end_s = cue.end.total_seconds()
             dur_sec = max(dur_sec, end_s)
-            c_start = utterance.spoken_text.find(cue.content)
-            c_end = c_start + len(cue.content) if c_start != -1 else 0
+
+            c_start = utterance.spoken_text.find(cue.content, char_cursor)
+            if c_start != -1:
+                c_end = c_start + len(cue.content)
+                char_cursor = c_end
+            else:
+                c_start = utterance.spoken_text.find(cue.content)
+                c_end = c_start + len(cue.content) if c_start != -1 else 0
 
             word_timings.append(
                 WordTiming(

@@ -32,6 +32,15 @@ uv sync --all-extras --dev
 
 # 3. Check system environment & diagnostics
 uv run cantoleaf doctor
+
+# 4. Inspect document chapters & depth gear estimates
+uv run cantoleaf estimate my_book.epub
+
+# 5. Convert an eBook to a chaptered .m4b cognitive audiobook
+uv run cantoleaf convert my_book.epub --gear crux -o audiobook.m4b
+
+# 6. Or launch the interactive Web Studio
+uv run cantoleaf studio
 ```
 
 ## Running Diagnostics & Tests
@@ -43,7 +52,7 @@ uv run ruff check .
 # Type-check with strict mypy
 uv run mypy src tests
 
-# Run offline tests
+# Run offline test suite (including 14 review regression tests)
 uv run pytest
 ```
 

@@ -37,15 +37,18 @@ def export_lrc_manifest(
 
 def export_srt_manifest(
     spans: list[SynthesizedSpan],
-    utterance_texts: list[str],
-    out_path: Path,
+    utterance_texts: list[str] | None = None,
+    out_path: Path | None = None,
 ) -> Path:
     """Exports sentence-level .srt subtitle file."""
+    if out_path is None:
+        raise ValueError("out_path is required")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     entries: list[str] = []
     timeline_s = 0.0
 
-    for i, (span, text) in enumerate(zip(spans, utterance_texts, strict=False)):
+    texts = utterance_texts if utterance_texts is not None else [s.utterance_id for s in spans]
+    for i, (span, text) in enumerate(zip(spans, texts, strict=False)):
         start_t = timeline_s
         end_t = timeline_s + span.duration_sec
 
@@ -61,3 +64,10 @@ def export_srt_manifest(
 
     out_path.write_text("\n".join(entries), encoding="utf-8")
     return out_path
+
+
+export_lrc = export_lrc_manifest
+
+
+def export_srt(spans: list[SynthesizedSpan], out_path: Path) -> Path:
+    return export_srt_manifest(spans, None, out_path)

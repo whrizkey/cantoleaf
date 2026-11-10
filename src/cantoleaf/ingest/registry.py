@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from cantoleaf.errors import IngestError
-from cantoleaf.ingest.docx_md import parse_markdown_or_txt
+from cantoleaf.ingest.docx_md import parse_docx, parse_markdown_or_txt
 from cantoleaf.ingest.epub import parse_epub
 from cantoleaf.ingest.pdf import parse_pdf
 from cantoleaf.models import BookMetadata
@@ -18,7 +18,9 @@ def load_document(source: str | Path) -> BookMetadata:
         return parse_epub(path)
     if suffix in (".pdf",):
         return parse_pdf(path)
+    if suffix in (".docx",):
+        return parse_docx(path)
     if suffix in (".md", ".markdown", ".txt"):
         return parse_markdown_or_txt(path)
 
-    raise IngestError(f"Unsupported format: {suffix}. Supported: .epub, .pdf, .md, .txt")
+    raise IngestError(f"Unsupported format: {suffix}. Supported: .epub, .pdf, .docx, .md, .txt")

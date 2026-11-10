@@ -1,6 +1,7 @@
 import re
 
-# Common abbreviations in English and other western languages to avoid false sentence splits
+# Curated set of strict title and designation abbreviations
+# Excludes normal words like 'no', 'ed', 'app', 'dec', 'or'
 COMMON_ABBREVIATIONS = {
     "mr",
     "mrs",
@@ -19,7 +20,6 @@ COMMON_ABBREVIATIONS = {
     "rd",
     "dept",
     "vol",
-    "no",
     "rev",
     "hon",
     "gen",
@@ -38,15 +38,13 @@ COMMON_ABBREVIATIONS = {
     "sept",
     "oct",
     "nov",
-    "dec",
     "approx",
-    "app",
-    "ed",
     "trans",
     "ca",
     "cf",
     "i.e",
     "e.g",
+    "ph.d",
 }
 
 # Regex for sentence boundaries (Latin script: . ? ! followed by space/quote, or CJK fullwidth punctuation)
@@ -95,9 +93,12 @@ def split_into_sentences(text: str) -> list[str]:
             if not (words and candidate.strip().endswith(".")):
                 break
             last_word = words[-1].rstrip(".").lower()
+
+            # Single uppercase letter followed by dot is an initial (e.g. "John F. Kennedy")
+            is_initial = len(words[-1].rstrip(".")) == 1 and words[-1].rstrip(".").isupper()
             is_abbrev = (
                 last_word in COMMON_ABBREVIATIONS
-                or len(last_word) == 1
+                or is_initial
                 or (len(last_word) == 3 and last_word[1] == ".")
             )
             # If next token begins with an uppercase letter, acronyms like a.m. or p.m. often end a sentence

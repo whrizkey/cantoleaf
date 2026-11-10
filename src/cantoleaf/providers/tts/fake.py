@@ -56,7 +56,11 @@ class FakeTtsProvider(TtsProvider):
             env[-fade_len:] = np.linspace(1, 0, fade_len)
         audio = 0.2 * np.sin(2 * math.pi * 440 * t) * env
 
-        out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.wav"
+        # Safe filename hashing to prevent collisions across voices/rates
+        import hashlib
+
+        h = hashlib.sha256(f"{utterance.utterance_id}:{voice}:{rate:.2f}".encode()).hexdigest()[:12]
+        out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}_{h}.wav"
         sf.write(str(out_path), audio, self.sample_rate)
 
         # Generate exact synthetic WordTiming intervals
@@ -84,6 +88,7 @@ class FakeTtsProvider(TtsProvider):
             )
             cur_t += word_dur
 
+        chosen_voice = voice or getattr(utterance, "target_voice", None) or "fake_voice_1"
         return SynthesizedSpan(
             utterance_id=utterance.utterance_id,
             audio_path=out_path,
@@ -91,5 +96,5 @@ class FakeTtsProvider(TtsProvider):
             pause_after_sec=utterance.pause_after_ms / 1000.0,
             word_timings=tuple(word_timings),
             provider=self.name,
-            voice=voice or "fake_voice_1",
+            voice=chosen_voice,
         )

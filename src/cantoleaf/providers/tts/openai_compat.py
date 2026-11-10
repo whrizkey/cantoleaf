@@ -61,15 +61,18 @@ class OpenAiCompatTtsProvider(TtsProvider):
             "response_format": "mp3",
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code == 429:
-                raise ProviderError("OpenAI rate limit exceeded (429)", retryable=True)
-            if resp.status_code != 200:
-                raise ProviderError(
-                    f"OpenAI TTS synthesis failed ({resp.status_code}): {resp.text}"
-                )
-            audio_bytes = resp.content
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 429:
+                    raise ProviderError("OpenAI rate limit exceeded (429)", retryable=True)
+                if resp.status_code != 200:
+                    raise ProviderError(
+                        f"OpenAI TTS synthesis failed ({resp.status_code}): {resp.text}"
+                    )
+                audio_bytes = resp.content
+        except httpx.HTTPError as e:
+            raise ProviderError(f"OpenAI network error: {e}", retryable=True) from e
 
         out_path = self.cache_dir / f"{utterance.utterance_id.replace(':', '_')}.mp3"
         out_path.write_bytes(audio_bytes)

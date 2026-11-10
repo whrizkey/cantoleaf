@@ -22,6 +22,9 @@ async def generate_depth_stream(
         for block in chapter.blocks:
             sentences = split_into_sentences(block.text)
             for s in sentences:
+                is_footnote = block.kind == BlockKind.FOOTNOTE
+                v_role = "margin_whisper" if is_footnote else "primary"
+                p_after = 600 if is_footnote else (350 if block.kind != BlockKind.HEADING else 800)
                 utterances.append(
                     Utterance(
                         utterance_id=f"{book_id}:ch{chapter.index}:b{block.block_index}:verbatim:{lang_mode}:u{u_idx}",
@@ -32,7 +35,8 @@ async def generate_depth_stream(
                         block_kind=block.kind,
                         source_text=s,
                         spoken_text=s,
-                        pause_after_ms=350 if block.kind != BlockKind.HEADING else 800,
+                        voice_role=v_role,
+                        pause_after_ms=p_after,
                     )
                 )
                 u_idx += 1

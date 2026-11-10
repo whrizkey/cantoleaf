@@ -249,10 +249,151 @@
 
     <script>
         let isPlaying = false;
+        let bookPath = new URLSearchParams(window.location.search).get("path") || "tests/fixtures/sample.epub";
+        let bookData = null;
+        let currentChapterIndex = 0;
+        let currentSpans = [];
+        let currentSpanIndex = 0;
+        let currentGear = "verbatim";
+        let currentLangMode = "source";
+        const audio = new Audio();
+
+        async function init() {
+            try {
+                const res = await fetch(`/api/book/inspect?path=${encodeURIComponent(bookPath)}`);
+                if (res.ok) {
+                    bookData = await res.json();
+                    renderTOC();
+                    await loadChapter(0);
+                }
+            } catch (e) {
+                console.log("No default book loaded:", e);
+            }
+        }
+
+        function renderTOC() {
+            if (!bookData || !bookData.chapters) return;
+            const tocList = document.getElementById('tocList');
+            tocList.innerHTML = "";
+            bookData.chapters.forEach((ch, idx) => {
+                const div = document.createElement('div');
+                div.className = `toc-item ${idx === currentChapterIndex ? 'active' : ''}`;
+                div.innerText = ch.title;
+                div.onclick = () => loadChapter(idx);
+                tocList.appendChild(div);
+            });
+        }
+
+        async function loadChapter(idx) {
+            currentChapterIndex = idx;
+            renderTOC();
+            const chTitle = bookData && bookData.chapters[idx] ? bookData.chapters[idx].title : `Chapter ${idx + 1}`;
+            document.getElementById('chapterTitle').innerText = chTitle;
+            document.getElementById('proseContainer').innerHTML = "<p style='color: var(--text-dim);'>Synthesizing audio and speech alignment...</p>";
+
+            try {
+                const res = await fetch('/api/chapter/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: bookPath,
+                        chapter_index: idx,
+                        gear: currentGear,
+                        lang_mode: currentLangMode,
+                        target_lang: 'en'
+                    })
+                });
+                if (!res.ok) throw new Error("Synthesis failed");
+                const data = await res.json();
+                currentSpans = data.spans || [];
+                renderSpans();
+                currentSpanIndex = 0;
+                if (isPlaying) {
+                    playSpan(0);
+                }
+            } catch (e) {
+                document.getElementById('proseContainer').innerHTML = `<p style='color: #f87171;'>Failed to synthesize: ${e.message}</p>`;
+            }
+        }
+
+        function renderSpans() {
+            const container = document.getElementById('proseContainer');
+            container.innerHTML = "";
+            currentSpans.forEach((span, sIdx) => {
+                const p = document.createElement('p');
+                p.id = `span_${sIdx}`;
+                p.style.marginBottom = "14px";
+
+                if (span.word_timings && span.word_timings.length > 0) {
+                    span.word_timings.forEach((wt, wIdx) => {
+                        const s = document.createElement('span');
+                        s.className = 'word-token';
+                        s.id = `token_${sIdx}_${wIdx}`;
+                        s.innerText = wt.word + " ";
+                        p.appendChild(s);
+                    });
+                } else {
+                    p.innerText = span.spoken_text;
+                }
+                container.appendChild(p);
+            });
+        }
+
         function togglePlay() {
+            if (currentSpans.length === 0) return;
             isPlaying = !isPlaying;
             document.getElementById('playBtn').innerText = isPlaying ? "⏸ Pause" : "▶ Play";
+            if (isPlaying) {
+                if (audio.src && !audio.ended && audio.currentTime > 0) {
+                    audio.play();
+                } else {
+                    playSpan(currentSpanIndex);
+                }
+            } else {
+                audio.pause();
+            }
         }
+
+        function playSpan(idx) {
+            if (idx >= currentSpans.length) {
+                isPlaying = false;
+                document.getElementById('playBtn').innerText = "▶ Play";
+                return;
+            }
+            currentSpanIndex = idx;
+            const span = currentSpans[idx];
+            audio.src = span.audio_url;
+            audio.play();
+        }
+
+        audio.ontimeupdate = () => {
+            const curTime = audio.currentTime;
+            const span = currentSpans[currentSpanIndex];
+            if (!span || !span.word_timings) return;
+
+            document.querySelectorAll('.word-token.active').forEach(el => el.classList.remove('active'));
+            span.word_timings.forEach((wt, wIdx) => {
+                if (curTime >= wt.start_sec && curTime <= wt.end_sec) {
+                    const el = document.getElementById(`token_${currentSpanIndex}_${wIdx}`);
+                    if (el) el.classList.add('active');
+                }
+            });
+
+            const dur = audio.duration || span.duration_sec || 1;
+            const fmt = (s) => ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + Math.floor(s % 60)).slice(-2);
+            document.getElementById('timecode').innerText = `${fmt(curTime)} / ${fmt(dur)}`;
+        };
+
+        audio.onended = () => {
+            document.querySelectorAll('.word-token.active').forEach(el => el.classList.remove('active'));
+            const span = currentSpans[currentSpanIndex];
+            const pauseMs = (span && span.pause_after_sec ? span.pause_after_sec : 0.3) * 1000;
+            setTimeout(() => {
+                if (isPlaying) {
+                    playSpan(currentSpanIndex + 1);
+                }
+            }, pauseMs);
+        };
 
         function onGearshift(val) {
             const pill = document.getElementById('currentGearPill');
@@ -263,24 +404,58 @@
             [lblP, lblC, lblV].forEach(el => el.classList.remove('active'));
 
             if (val == 1) {
+                currentGear = "pulse";
                 pill.innerText = "Gear 1: Pulse (3-Minute Thesis Rail)";
                 lblP.classList.add('active');
             } else if (val == 2) {
+                currentGear = "crux";
                 pill.innerText = "Gear 2: Crux (High-Signal / Anecdotes Bridged)";
                 lblC.classList.add('active');
             } else {
+                currentGear = "verbatim";
                 pill.innerText = "Gear 3: Verbatim (100% Unabridged)";
                 lblV.classList.add('active');
             }
+
+            if (bookData) {
+                loadChapter(currentChapterIndex);
+            }
         }
+
+        document.getElementById('langMode').onchange = (e) => {
+            currentLangMode = e.target.value;
+            if (bookData) {
+                loadChapter(currentChapterIndex);
+            }
+        };
 
         function crystallizeSelection() {
-            alert("💎 Paragraph crystallized to Obsidian Vault (./notes) and Anki Deck!");
+            alert("💎 Current chapter crystallized to Obsidian Vault (./notes) and Anki Deck!");
         }
 
-        function downloadM4B() {
-            alert("📥 Mastering Chaptered .M4B with embedded TOC and .LRC sync files...");
+        async function downloadM4B() {
+            alert("📥 Initiating audiobook mastering to .M4B with embedded chapters...");
+            try {
+                const res = await fetch('/api/book/export-m4b', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: bookPath,
+                        gear: currentGear
+                    })
+                });
+                const data = await res.json();
+                if (data.status === "success") {
+                    alert(`✅ Mastered successfully to ${data.out_file} (${data.total_duration_sec}s)!`);
+                } else {
+                    alert(`Mastering failed: ${JSON.stringify(data)}`);
+                }
+            } catch (e) {
+                alert(`Export error: ${e.message}`);
+            }
         }
+
+        window.onload = init;
     </script>
 </body>
 </html>
